@@ -486,7 +486,8 @@ public class JITProvisioningPostAuthenticationHandler extends AbstractPostAuthnH
             boolean showAuthFailureReason = true;
             retryPage = FrameworkUtils.appendQueryParamsStringToUrl(retryPage,
                     "sp=" + context.getServiceProviderName());
-                                                                    
+            retryPage = FrameworkUtils.appendQueryParamsStringToUrl(retryPage,
+                    "sessionDataKey=" + context.getContextIdentifier());
             if (!showAuthFailureReason) {
                 retryParam = "&authFailure=true&authFailureMsg=login.fail.message";
             }
