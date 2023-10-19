@@ -70,6 +70,12 @@ public class SQLQueries {
             "sr.UM_SHARED_ROLE_TENANT_ID = hr2.UM_TENANT_ID WHERE hr2.UM_UUID =:UM_UUID; AND " +
             "hr2.UM_TENANT_ID =:UM_TENANT_ID;";
 
+    public static final String GET_SHARED_ROLES_MAIN_ROLE_IDS_SQL = "SELECT hr.UM_UUID, hr.UM_TENANT_ID FROM " +
+            "UM_HYBRID_ROLE hr JOIN UM_SHARED_ROLE sr ON hr.UM_ID = sr.UM_MAIN_ROLE_ID AND hr.UM_TENANT_ID = " +
+            "sr.UM_MAIN_ROLE_TENANT_ID JOIN UM_HYBRID_ROLE hr2 ON sr.UM_SHARED_ROLE_ID = hr2.UM_ID AND " +
+            "sr.UM_SHARED_ROLE_TENANT_ID = hr2.UM_TENANT_ID WHERE AND hr2.UM_TENANT_ID =:UM_TENANT_ID; AND " +
+            "hr2.UM_UUID IN (";
+
     public static final String GET_MAIN_ROLE_TO_SHARED_ROLE_MAPPINGS_BY_SUBORG_SQL = "SELECT m_main.UM_UUID " +
             ", m_shared.UM_UUID FROM UM_SHARED_ROLE AS s JOIN UM_HYBRID_ROLE " +
             "AS m_main ON s.UM_MAIN_ROLE_ID = m_main.UM_ID AND s.UM_MAIN_ROLE_TENANT_ID = m_main.UM_TENANT_ID " +

@@ -384,6 +384,7 @@ public class RoleDAOTest extends PowerMockTestCase {
             RoleBasicInfo role = addRole("role1", APPLICATION_AUD, "test-app-id");
             when(IdentityDatabaseUtil.getUserDBConnection(anyBoolean())).thenReturn(connection3);
             when(IdentityDatabaseUtil.getDBConnection(anyBoolean())).thenReturn(connection4);
+            doReturn(false).when(roleDAO, "isSubOrgByTenant", anyString());
             List<Permission> rolePermissions = roleDAO.getPermissionListOfRole(role.getId(), SAMPLE_TENANT_DOMAIN);
             Assert.assertEquals(getPermissionNameList(rolePermissions), getPermissionNameList(permissions));
         }
@@ -413,6 +414,7 @@ public class RoleDAOTest extends PowerMockTestCase {
             roleDAO.updatePermissionListOfRole(role.getId(), newPermissions, permissions, SAMPLE_TENANT_DOMAIN);
             when(IdentityDatabaseUtil.getUserDBConnection(anyBoolean())).thenReturn(connection5);
             when(IdentityDatabaseUtil.getDBConnection(anyBoolean())).thenReturn(connection6);
+            doReturn(false).when(roleDAO, "isSubOrgByTenant", anyString());
             List<Permission> rolePermissions = roleDAO.getPermissionListOfRole(role.getId(), SAMPLE_TENANT_DOMAIN);
             Assert.assertEquals(getPermissionNameList(rolePermissions), getPermissionNameList(newPermissions));
         }

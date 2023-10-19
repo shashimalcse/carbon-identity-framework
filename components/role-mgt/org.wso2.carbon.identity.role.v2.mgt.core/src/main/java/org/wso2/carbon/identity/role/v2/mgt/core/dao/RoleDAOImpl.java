@@ -35,6 +35,7 @@ import org.wso2.carbon.identity.core.util.IdentityDatabaseUtil;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.organization.management.service.exception.OrganizationManagementException;
+import org.wso2.carbon.identity.organization.management.service.util.OrganizationManagementUtil;
 import org.wso2.carbon.identity.role.v2.mgt.core.AssociatedApplication;
 import org.wso2.carbon.identity.role.v2.mgt.core.FilterQueryBuilder;
 import org.wso2.carbon.identity.role.v2.mgt.core.GroupBasicInfo;
@@ -164,6 +165,7 @@ import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_SCOPE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_UM_ID_BY_UUID;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_SCOPE_BY_ROLES_SQL;
+import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_SHARED_ROLES_MAIN_ROLE_IDS_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_SHARED_ROLES_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_SHARED_ROLE_MAIN_ROLE_ID_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_USER_LIST_OF_ROLE_SQL;
@@ -382,11 +384,25 @@ public class RoleDAOImpl implements RoleDAO {
     public List<Permission> getPermissionListOfRole(String roleID, String tenantDomain)
             throws IdentityRoleManagementException {
 
-        return getPermissions(roleID, tenantDomain);
+        if (isSubOrgByTenant(tenantDomain)) {
+            return getPermissionsOfSharedRole(roleID, tenantDomain);
+        } else {
+            return getPermissions(roleID, tenantDomain);
+        }
     }
 
     @Override
     public List<String> getPermissionListOfRoles(List<String> roleIDs, String tenantDomain)
+            throws IdentityRoleManagementException {
+
+        if (isSubOrgByTenant(tenantDomain)) {
+            return getPermissionsOfSharedRoles(roleIDs, tenantDomain);
+        } else {
+            return getPermissionListOfRolesByIds(roleIDs, tenantDomain);
+        }
+    }
+
+    private List<String> getPermissionListOfRolesByIds(List<String> roleIDs, String tenantDomain)
             throws IdentityRoleManagementException {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
@@ -1326,7 +1342,7 @@ public class RoleDAOImpl implements RoleDAO {
      *
      * @param roleId Role ID.
      * @param tenantDomain Tenant Domain.
-     * @return Role ID.
+     * @return is Shared role.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
     private boolean isSharedRole(String roleId, String tenantDomain)
@@ -1357,7 +1373,25 @@ public class RoleDAOImpl implements RoleDAO {
     }
 
     /**
-     * Update scim role name.
+     * Check tenant is a sub organization.
+     *
+     * @param tenantDomain Tenant Domain.
+     * @return is Shared Organization.
+     * @throws IdentityRoleManagementException IdentityRoleManagementException.
+     */
+    private boolean isSubOrgByTenant(String tenantDomain) throws IdentityRoleManagementException {
+
+        try {
+            return OrganizationManagementUtil.isOrganization(tenantDomain);
+        } catch (OrganizationManagementException e) {
+            String errorMessage = "Error while checking is sub org by tenant domain: " + tenantDomain;
+            throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(), errorMessage, e);
+        }
+    }
+
+
+    /**
+     * Get permission of shared role.
      *
      * @param roleId Role ID.
      * @param tenantDomain Tenant domain.
@@ -1388,9 +1422,54 @@ public class RoleDAOImpl implements RoleDAO {
                 }
             }
         } catch (SQLException | IdentityRoleManagementException e) {
-            String errorMessage = "Error while checking is existing role for role id: %s in the tenantDomain: %s";
+            String errorMessage = "Error while retrieving permissions for role id: %s in the tenantDomain: %s";
             throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(),
                     String.format(errorMessage, roleId, tenantDomain), e);
+        }
+        return null;
+    }
+
+    /**
+     * Get permission of shared roles.
+     *
+     * @param roleIds Role IDs.
+     * @param tenantDomain Tenant domain.
+     * @throws IdentityRoleManagementException IdentityRoleManagementException.
+     */
+    private List<String> getPermissionsOfSharedRoles(List<String> roleIds, String tenantDomain)
+            throws IdentityRoleManagementException {
+
+        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+        List<String> mainRoleIds = new ArrayList<>();
+        int mainTenantId = -1;
+        String query = GET_SHARED_ROLES_MAIN_ROLE_IDS_SQL + String.join(", ",
+                Collections.nCopies(roleIds.size(), "?")) + ")";
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
+            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                    query, RoleConstants.RoleTableColumns.UM_MAIN_ROLE_ID)) {
+                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+                for (int i = 0; i < roleIds.size(); i++) {
+                    statement.setString(i + 2, roleIds.get(i));
+                }
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        mainRoleIds.add(resultSet.getString(RoleConstants.RoleTableColumns.UM_UUID));
+                        if (mainTenantId == -1) {
+                            mainTenantId = resultSet.getInt(RoleConstants.RoleTableColumns.UM_TENANT_ID);
+                        }
+                    }
+                }
+            }
+            if (!mainRoleIds.isEmpty() && mainTenantId != -1) {
+                String mainTenantDomain = IdentityTenantUtil.getTenantDomain(mainTenantId);
+                if (StringUtils.isNotEmpty(mainTenantDomain)) {
+                    return getPermissionListOfRolesByIds(mainRoleIds, mainTenantDomain);
+                }
+            }
+        } catch (SQLException | IdentityRoleManagementException e) {
+            String errorMessage = "Error while retrieving permissions for role ids : "
+                    + StringUtils.join(roleIds, ",") + "in the tenantDomain: " + tenantDomain;
+            throw new IdentityRoleManagementServerException(errorMessage, e);
         }
         return null;
     }
