@@ -800,7 +800,7 @@ public class RoleDAOImpl implements RoleDAO {
         String nameWithoutDomain = UserCoreUtil.removeDomainFromName(userName);
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<RoleBasicInfo> roles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
             try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_LIST_OF_USER_SQL)) {
                 statement.setString(RoleConstants.RoleTableColumns.UM_USER_NAME, nameWithoutDomain);
                 statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
@@ -844,7 +844,7 @@ public class RoleDAOImpl implements RoleDAO {
         }
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<RoleBasicInfo> roles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
             try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
                     GET_ROLE_LIST_OF_GROUP_SQL)) {
                 for (String groupName : groupNamesList) {
@@ -891,7 +891,7 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<RoleBasicInfo> roles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
             try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
                     GET_ROLE_LIST_OF_IDP_GROUPS_SQL)) {
                 for (String groupId : groupIds) {
@@ -940,7 +940,7 @@ public class RoleDAOImpl implements RoleDAO {
         String nameWithoutDomain = UserCoreUtil.removeDomainFromName(userName);
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<String> roleIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
             try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
                     GET_ROLE_ID_LIST_OF_USER_SQL)) {
                 statement.setString(RoleConstants.RoleTableColumns.UM_USER_NAME, nameWithoutDomain);
@@ -973,7 +973,7 @@ public class RoleDAOImpl implements RoleDAO {
         }
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<String> roleIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
             try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
                     GET_ROLE_ID_LIST_OF_GROUP_SQL)) {
                 for (String groupName : groupNamesList) {
@@ -1011,7 +1011,7 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<String> roleIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
             try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
                     GET_ROLE_ID_LIST_OF_IDP_GROUPS_SQL)) {
                 for (String groupId : groupIds) {
