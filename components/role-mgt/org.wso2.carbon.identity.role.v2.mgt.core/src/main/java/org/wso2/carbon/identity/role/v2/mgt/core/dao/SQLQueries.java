@@ -25,7 +25,7 @@ public class SQLQueries {
 
     public static final String GET_ROLE_UM_ID_BY_UUID = "SELECT UM_ID FROM UM_HYBRID_ROLE WHERE UM_UUID=:UM_UUID;";
 
-    public static final String ADD_ROLE_WITH_AUDIENCE_SQL = "INSERT INTO UM_HYBRID_ROLE (UM_ROLE_NAME, " +
+    public static final String ADD_ROLE_SQL = "INSERT INTO UM_HYBRID_ROLE (UM_ROLE_NAME, " +
             "UM_AUDIENCE_REF_ID, UM_UUID, UM_TENANT_ID) VALUES (:UM_ROLE_NAME;, :UM_AUDIENCE_REF_ID;, :UM_UUID;, " +
             ":UM_TENANT_ID;)";
 

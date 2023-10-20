@@ -108,7 +108,7 @@ import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_GROUP
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_IDP_GROUPS_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_ROLE_AUDIENCE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_ROLE_SCOPE_SQL;
-import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_ROLE_WITH_AUDIENCE_SQL;
+import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_ROLE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_SCIM_ROLE_ID_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_USER_TO_ROLE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_USER_TO_ROLE_SQL_MSSQL;
@@ -214,7 +214,7 @@ public class RoleDAOImpl implements RoleDAO {
                 int audienceRefId = getRoleAudienceRefId(audience, audienceId, connection);
                 try {
                     try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                            ADD_ROLE_WITH_AUDIENCE_SQL, RoleConstants.RoleTableColumns.UM_ID)) {
+                            ADD_ROLE_SQL, RoleConstants.RoleTableColumns.UM_ID)) {
                         statement.setString(RoleConstants.RoleTableColumns.UM_ROLE_NAME, roleName);
                         statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
                         statement.setInt(RoleConstants.RoleTableColumns.UM_AUDIENCE_REF_ID, audienceRefId);
