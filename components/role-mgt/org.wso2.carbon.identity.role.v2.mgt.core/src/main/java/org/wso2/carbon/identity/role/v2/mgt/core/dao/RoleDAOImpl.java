@@ -3123,6 +3123,11 @@ public class RoleDAOImpl implements RoleDAO {
             for (ExpressionNode expressionNode : expressionNodes) {
                 String operation = expressionNode.getOperation();
                 String value = expressionNode.getValue();
+                if (ORGANIZATION.equalsIgnoreCase(value)) {
+                    value = ORGANIZATION;
+                } else if (APPLICATION.equalsIgnoreCase(value)) {
+                    value = APPLICATION;
+                }
                 String attributeValue = expressionNode.getAttributeValue();
                 String attributeName = RoleConstants.ATTRIBUTE_COLUMN_MAP.get(attributeValue);
 
