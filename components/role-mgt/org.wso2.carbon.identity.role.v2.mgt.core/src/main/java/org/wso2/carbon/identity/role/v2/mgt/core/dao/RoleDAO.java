@@ -19,13 +19,13 @@
 package org.wso2.carbon.identity.role.v2.mgt.core.dao;
 
 import org.wso2.carbon.identity.core.model.ExpressionNode;
-import org.wso2.carbon.identity.role.v2.mgt.core.GroupBasicInfo;
-import org.wso2.carbon.identity.role.v2.mgt.core.IdentityRoleManagementException;
-import org.wso2.carbon.identity.role.v2.mgt.core.IdpGroup;
-import org.wso2.carbon.identity.role.v2.mgt.core.Permission;
-import org.wso2.carbon.identity.role.v2.mgt.core.Role;
-import org.wso2.carbon.identity.role.v2.mgt.core.RoleBasicInfo;
-import org.wso2.carbon.identity.role.v2.mgt.core.UserBasicInfo;
+import org.wso2.carbon.identity.role.v2.mgt.core.exception.IdentityRoleManagementException;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.GroupBasicInfo;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.IdpGroup;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.Permission;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.Role;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.RoleBasicInfo;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.UserBasicInfo;
 
 import java.util.List;
 import java.util.Map;
@@ -43,8 +43,8 @@ public interface RoleDAO {
      * @param userList     List of users.
      * @param groupList    List of groups.
      * @param permissions  List of permissions.
-     * @param audience  Audience.
-     * @param audienceId  Audience ID.
+     * @param audience     Audience.
+     * @param audienceId   Audience ID.
      * @param tenantDomain Tenant domain.
      * @return Basic role object.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
@@ -71,11 +71,11 @@ public interface RoleDAO {
      * Retrieve available roles matching the provided filter.
      *
      * @param expressionNodes List of expressionNodes.
-     * @param limit        Limit value.
-     * @param offset       Offset value.
-     * @param sortBy       SortBy value.
-     * @param sortOrder    Sort order value.
-     * @param tenantDomain Tenant domain.
+     * @param limit           Limit value.
+     * @param offset          Offset value.
+     * @param sortBy          SortBy value.
+     * @param sortOrder       Sort order value.
+     * @param tenantDomain    Tenant domain.
      * @return List of roles.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -106,7 +106,7 @@ public interface RoleDAO {
     /**
      * Get permission list of the given role ids.
      *
-     * @param roleIDs       Role IDs.
+     * @param roleIDs      Role IDs.
      * @param tenantDomain Tenant domain.
      * @return List of permissions.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
@@ -117,14 +117,14 @@ public interface RoleDAO {
     /**
      * Get permission list of the given role.
      *
-     * @param roleID       Role ID.
-     * @param addedPermissions      Added Permissions.
-     * @param deletedPermissions       Deleted Permissions.
-     * @param tenantDomain Tenant domain.
+     * @param roleID             Role ID.
+     * @param addedPermissions   Added Permissions.
+     * @param deletedPermissions Deleted Permissions.
+     * @param tenantDomain       Tenant domain.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
     void updatePermissionListOfRole(String roleID, List<Permission> addedPermissions,
-                                             List<Permission> deletedPermissions, String tenantDomain)
+                                    List<Permission> deletedPermissions, String tenantDomain)
             throws IdentityRoleManagementException;
 
     /**
@@ -140,14 +140,14 @@ public interface RoleDAO {
     /**
      * Update the list of idp groups in the given role.
      *
-     * @param roleID             Role ID.
+     * @param roleID           Role ID.
      * @param newGroupList     The set of new groups.
      * @param deletedGroupList The set of deleted groups.
-     * @param tenantDomain       Tenant domain.
+     * @param tenantDomain     Tenant domain.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
     void updateIdpGroupListOfRole(String roleID, List<IdpGroup> newGroupList, List<IdpGroup> deletedGroupList,
-                                           String tenantDomain) throws IdentityRoleManagementException;
+                                  String tenantDomain) throws IdentityRoleManagementException;
 
     /**
      * Handle role deletion (delete permissions, app associations, shared roles).
@@ -189,7 +189,7 @@ public interface RoleDAO {
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
     void updateGroupListOfRole(String roleID, List<String> newGroupIDList, List<String> deletedGroupIDList,
-                                                                               String tenantDomain)
+                               String tenantDomain)
             throws IdentityRoleManagementException;
 
     /**
@@ -212,7 +212,7 @@ public interface RoleDAO {
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
     void updateUserListOfRole(String roleID, List<String> newUserIDList, List<String> deletedUserIDList,
-                                                                              String tenantDomain)
+                              String tenantDomain)
             throws IdentityRoleManagementException;
 
     /**
@@ -228,9 +228,9 @@ public interface RoleDAO {
     /**
      * Get Role id by name.
      *
-     * @param roleName       Role Id.
-     * @param audience  Audience.
-     * @param audienceId  Audience ID.
+     * @param roleName     Role Id.
+     * @param audience     Audience.
+     * @param audienceId   Audience ID.
      * @param tenantDomain Tenant Domain.
      * @return Role name for the given role id.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
@@ -287,8 +287,8 @@ public interface RoleDAO {
     /**
      * Get role without users.
      *
-     * @param roleID          Role ID.
-     * @param tenantDomain    Tenant domain.
+     * @param roleID       Role ID.
+     * @param tenantDomain Tenant domain.
      * @return The role object.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -310,8 +310,8 @@ public interface RoleDAO {
     /**
      * Get role list of user.
      *
-     * @param userId          User ID.
-     * @param tenantDomain    Tenant domain.
+     * @param userId       User ID.
+     * @param tenantDomain Tenant domain.
      * @return The list of basic role object.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -320,8 +320,8 @@ public interface RoleDAO {
     /**
      * Get role list of groups.
      *
-     * @param groupIds        Group IDs.
-     * @param tenantDomain    Tenant domain.
+     * @param groupIds     Group IDs.
+     * @param tenantDomain Tenant domain.
      * @return The list of basic role object.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -331,8 +331,8 @@ public interface RoleDAO {
     /**
      * Get role list of idp groups.
      *
-     * @param groupIds        Idp Group IDs.
-     * @param tenantDomain    Tenant domain.
+     * @param groupIds     Idp Group IDs.
+     * @param tenantDomain Tenant domain.
      * @return The list of basic role object.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -342,8 +342,8 @@ public interface RoleDAO {
     /**
      * Get role id list of user.
      *
-     * @param userId          User ID.
-     * @param tenantDomain    Tenant domain.
+     * @param userId       User ID.
+     * @param tenantDomain Tenant domain.
      * @return The list of role id.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -352,8 +352,8 @@ public interface RoleDAO {
     /**
      * Get role id list of groups.
      *
-     * @param groupIds        Group IDs.
-     * @param tenantDomain    Tenant domain.
+     * @param groupIds     Group IDs.
+     * @param tenantDomain Tenant domain.
      * @return The list of role id.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -363,8 +363,8 @@ public interface RoleDAO {
     /**
      * Get role id list of idp groups.
      *
-     * @param groupIds        Idp Group IDs.
-     * @param tenantDomain    Tenant domain.
+     * @param groupIds     Idp Group IDs.
+     * @param tenantDomain Tenant domain.
      * @return The list of role id.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
@@ -374,8 +374,8 @@ public interface RoleDAO {
     /**
      * Delete all roles associated app by id.
      *
-     * @param applicationId        Idp Group IDs.
-     * @param tenantDomain    Tenant domain.
+     * @param applicationId Idp Group IDs.
+     * @param tenantDomain  Tenant domain.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
     void deleteRolesByApplication(String applicationId, String tenantDomain) throws IdentityRoleManagementException;
@@ -383,7 +383,7 @@ public interface RoleDAO {
     /**
      * Get main role to shared role mappings by subOrg.
      *
-     * @param roleIds        Main role IDs.
+     * @param roleIds            Main role IDs.
      * @param subOrgTenantDomain Sub Organization tenant domain.
      * @return The map of main role id to shared roles.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.

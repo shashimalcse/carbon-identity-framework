@@ -33,8 +33,17 @@ import org.wso2.carbon.identity.core.model.OperationNode;
 import org.wso2.carbon.identity.organization.management.service.exception.OrganizationManagementException;
 import org.wso2.carbon.identity.role.v2.mgt.core.dao.RoleDAO;
 import org.wso2.carbon.identity.role.v2.mgt.core.dao.RoleMgtDAOFactory;
+import org.wso2.carbon.identity.role.v2.mgt.core.exception.IdentityRoleManagementClientException;
+import org.wso2.carbon.identity.role.v2.mgt.core.exception.IdentityRoleManagementException;
+import org.wso2.carbon.identity.role.v2.mgt.core.exception.IdentityRoleManagementServerException;
 import org.wso2.carbon.identity.role.v2.mgt.core.internal.RoleManagementServiceComponentHolder;
 import org.wso2.carbon.identity.role.v2.mgt.core.listener.RoleManagementListener;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.GroupBasicInfo;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.IdpGroup;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.Permission;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.Role;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.RoleBasicInfo;
+import org.wso2.carbon.identity.role.v2.mgt.core.model.UserBasicInfo;
 import org.wso2.carbon.user.core.UserCoreConstants;
 import org.wso2.carbon.user.core.util.UserCoreUtil;
 
@@ -559,6 +568,12 @@ public class RoleManagementServiceImpl implements RoleManagementService {
         return roleDAO.getAssociatedApplicationIdsByRoleId(roleID, tenantDomain);
     }
 
+    /**
+     * Get user from tenant domain.
+     *
+     * @param tenantDomain tenantDomain.
+     * @return user.
+     */
     private String getUser(String tenantDomain) {
 
         String user = CarbonContext.getThreadLocalCarbonContext().getUsername();
@@ -673,6 +688,12 @@ public class RoleManagementServiceImpl implements RoleManagementService {
         return roleName.contains(UserCoreConstants.DOMAIN_SEPARATOR);
     }
 
+    /**
+     * Remove similar permissions.
+     *
+     * @param arr1 Array of permissions.
+     * @param arr2 Array of permissions.
+     */
     private void removeSimilarPermissions(List<Permission> arr1, List<Permission> arr2) {
         List<Permission> toRemove = new ArrayList<>();
 
@@ -688,6 +709,12 @@ public class RoleManagementServiceImpl implements RoleManagementService {
         arr2.removeAll(toRemove);
     }
 
+    /**
+     * Remove similar idp groups.
+     *
+     * @param arr1 Array of idp groups.
+     * @param arr2 Array of idp groups.
+     */
     private void removeSimilarIdpGroups(List<IdpGroup> arr1, List<IdpGroup> arr2) {
         List<IdpGroup> toRemove = new ArrayList<>();
 
