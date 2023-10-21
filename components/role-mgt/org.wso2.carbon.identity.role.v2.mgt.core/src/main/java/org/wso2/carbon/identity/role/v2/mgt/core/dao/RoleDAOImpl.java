@@ -89,6 +89,7 @@ import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.INVA
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.INVALID_OFFSET;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.INVALID_REQUEST;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.OPERATION_FORBIDDEN;
+import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.PERMISSION_ALREADY_ADDED;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.ROLE_ALREADY_EXISTS;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.ROLE_NOT_FOUND;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.Error.SORTING_NOT_IMPLEMENTED;
@@ -103,6 +104,7 @@ import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.ORGANIZATI
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.POSTGRE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.RoleTableColumns.ROLE_NAME;
 import static org.wso2.carbon.identity.role.v2.mgt.core.RoleConstants.RoleTableColumns.USER_NOT_FOUND_ERROR_MESSAGE;
+import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_APP_ROLE_ASSOCIATION_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_GROUP_TO_ROLE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_GROUP_TO_ROLE_SQL_MSSQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.ADD_IDP_GROUPS_SQL;
@@ -162,6 +164,7 @@ import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_LIST_OF_IDP_GROUPS_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_LIST_OF_USER_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_NAME_BY_ID_SQL;
+import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_SCOPE_NAMES_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_SCOPE_SQL;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_ROLE_UM_ID_BY_UUID;
 import static org.wso2.carbon.identity.role.v2.mgt.core.dao.SQLQueries.GET_SCOPE_BY_ROLES_SQL;
@@ -250,7 +253,7 @@ public class RoleDAOImpl implements RoleDAO {
 
                     // Handle role id, permissions
 
-                    addRoleInfo(roleId, roleName, permissions, audienceRefId, tenantDomain);
+                    addRoleInfo(roleId, roleName, permissions, audience, audienceId, audienceRefId, tenantDomain);
 
                     IdentityDatabaseUtil.commitUserDBTransaction(connection);
                 } catch (SQLException | IdentityRoleManagementException e) {
@@ -409,16 +412,16 @@ public class RoleDAOImpl implements RoleDAO {
         List<String> permissions = new ArrayList<>();
         String query = GET_SCOPE_BY_ROLES_SQL + String.join(", ",
                 Collections.nCopies(roleIDs.size(), "?")) + ")";
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, query)) {
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
-                for (int i = 0; i < roleIDs.size(); i++) {
-                    statement.setString(i + 2, roleIDs.get(i));
-                }
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        permissions.add(resultSet.getString(1));
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, query)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
+            for (int i = 0; i < roleIDs.size(); i++) {
+                statement.setString(i + 2, roleIDs.get(i));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    permissions.add(resultSet.getString(1));
                 }
             }
         } catch (SQLException e) {
@@ -464,14 +467,14 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<IdpGroup> groups = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_IDP_GROUPS_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleID);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        groups.add(new IdpGroup(resultSet.getString(1)));
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_IDP_GROUPS_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleID);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    groups.add(new IdpGroup(resultSet.getString(1)));
                 }
             }
         } catch (SQLException e) {
@@ -800,23 +803,23 @@ public class RoleDAOImpl implements RoleDAO {
         String nameWithoutDomain = UserCoreUtil.removeDomainFromName(userName);
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<RoleBasicInfo> roles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_LIST_OF_USER_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_USER_NAME, nameWithoutDomain);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        String roleName = resultSet.getString(1);
-                        String roleId = resultSet.getString(2);
-                        String audience = resultSet.getString(3);
-                        String audienceId = resultSet.getString(4);
-                        RoleBasicInfo  roleBasicInfo = new RoleBasicInfo(roleId, roleName);
-                        roleBasicInfo.setAudience(audience);
-                        roleBasicInfo.setAudienceId(audienceId);
-                        roleBasicInfo.setAudienceName(getAudienceName(audience, audienceId, tenantDomain));
-                        roles.add(roleBasicInfo);
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_LIST_OF_USER_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_USER_NAME, nameWithoutDomain);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String roleName = resultSet.getString(1);
+                    String roleId = resultSet.getString(2);
+                    String audience = resultSet.getString(3);
+                    String audienceId = resultSet.getString(4);
+                    RoleBasicInfo  roleBasicInfo = new RoleBasicInfo(roleId, roleName);
+                    roleBasicInfo.setAudience(audience);
+                    roleBasicInfo.setAudienceId(audienceId);
+                    roleBasicInfo.setAudienceName(getAudienceName(audience, audienceId, tenantDomain));
+                    roles.add(roleBasicInfo);
                 }
             }
         } catch (SQLException e) {
@@ -844,33 +847,31 @@ public class RoleDAOImpl implements RoleDAO {
         }
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<RoleBasicInfo> roles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLE_LIST_OF_GROUP_SQL)) {
-                for (String groupName : groupNamesList) {
-                    // Add domain if not set.
-                    groupName = UserCoreUtil.addDomainToName(groupName, primaryDomainName);
-                    // Get domain from name.
-                    String domainName = UserCoreUtil.extractDomainFromName(groupName);
-                    if (domainName != null) {
-                        domainName = domainName.toUpperCase(Locale.ENGLISH);
-                    }
-                    String nameWithoutDomain = UserCoreUtil.removeDomainFromName(groupName);
-                    statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_NAME, nameWithoutDomain);
-                    statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                    statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
-                    try (ResultSet resultSet = statement.executeQuery()) {
-                        while (resultSet.next()) {
-                            String roleName = resultSet.getString(1);
-                            String roleId = resultSet.getString(2);
-                            String audience = resultSet.getString(3);
-                            String audienceId = resultSet.getString(4);
-                            RoleBasicInfo  roleBasicInfo = new RoleBasicInfo(roleId, roleName);
-                            roleBasicInfo.setAudience(audience);
-                            roleBasicInfo.setAudienceId(audienceId);
-                            roleBasicInfo.setAudienceName(getAudienceName(audience, audienceId, tenantDomain));
-                            roles.add(roleBasicInfo);
-                        }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_LIST_OF_GROUP_SQL)) {
+            for (String groupName : groupNamesList) {
+                // Add domain if not set.
+                groupName = UserCoreUtil.addDomainToName(groupName, primaryDomainName);
+                // Get domain from name.
+                String domainName = UserCoreUtil.extractDomainFromName(groupName);
+                if (domainName != null) {
+                    domainName = domainName.toUpperCase(Locale.ENGLISH);
+                }
+                String nameWithoutDomain = UserCoreUtil.removeDomainFromName(groupName);
+                statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_NAME, nameWithoutDomain);
+                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+                statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        String roleName = resultSet.getString(1);
+                        String roleId = resultSet.getString(2);
+                        String audience = resultSet.getString(3);
+                        String audienceId = resultSet.getString(4);
+                        RoleBasicInfo  roleBasicInfo = new RoleBasicInfo(roleId, roleName);
+                        roleBasicInfo.setAudience(audience);
+                        roleBasicInfo.setAudienceId(audienceId);
+                        roleBasicInfo.setAudienceName(getAudienceName(audience, audienceId, tenantDomain));
+                        roles.add(roleBasicInfo);
                     }
                 }
             }
@@ -891,24 +892,23 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<RoleBasicInfo> roles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLE_LIST_OF_IDP_GROUPS_SQL)) {
-                for (String groupId : groupIds) {
-                    statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_ID, groupId);
-                    statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                    try (ResultSet resultSet = statement.executeQuery()) {
-                        while (resultSet.next()) {
-                            String roleName = resultSet.getString(1);
-                            String roleId = resultSet.getString(2);
-                            String audience = resultSet.getString(3);
-                            String audienceId = resultSet.getString(4);
-                            RoleBasicInfo  roleBasicInfo = new RoleBasicInfo(roleId, roleName);
-                            roleBasicInfo.setAudience(audience);
-                            roleBasicInfo.setAudienceId(audienceId);
-                            roleBasicInfo.setAudienceName(getAudienceName(audience, audienceId, tenantDomain));
-                            roles.add(roleBasicInfo);
-                        }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                     GET_ROLE_LIST_OF_IDP_GROUPS_SQL)) {
+            for (String groupId : groupIds) {
+                statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_ID, groupId);
+                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        String roleName = resultSet.getString(1);
+                        String roleId = resultSet.getString(2);
+                        String audience = resultSet.getString(3);
+                        String audienceId = resultSet.getString(4);
+                        RoleBasicInfo  roleBasicInfo = new RoleBasicInfo(roleId, roleName);
+                        roleBasicInfo.setAudience(audience);
+                        roleBasicInfo.setAudienceId(audienceId);
+                        roleBasicInfo.setAudienceName(getAudienceName(audience, audienceId, tenantDomain));
+                        roles.add(roleBasicInfo);
                     }
                 }
             }
@@ -940,17 +940,16 @@ public class RoleDAOImpl implements RoleDAO {
         String nameWithoutDomain = UserCoreUtil.removeDomainFromName(userName);
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<String> roleIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLE_ID_LIST_OF_USER_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_USER_NAME, nameWithoutDomain);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        String roleId = resultSet.getString(1);
-                        roleIds.add(roleId);
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_ID_LIST_OF_USER_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_USER_NAME, nameWithoutDomain);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String roleId = resultSet.getString(1);
+                    roleIds.add(roleId);
                 }
             }
         } catch (SQLException e) {
@@ -973,26 +972,24 @@ public class RoleDAOImpl implements RoleDAO {
         }
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<String> roleIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLE_ID_LIST_OF_GROUP_SQL)) {
-                for (String groupName : groupNamesList) {
-                    // Add domain if not set.
-                    groupName = UserCoreUtil.addDomainToName(groupName, primaryDomainName);
-                    // Get domain from name.
-                    String domainName = UserCoreUtil.extractDomainFromName(groupName);
-                    if (domainName != null) {
-                        domainName = domainName.toUpperCase(Locale.ENGLISH);
-                    }
-                    String nameWithoutDomain = UserCoreUtil.removeDomainFromName(groupName);
-                    statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_NAME, nameWithoutDomain);
-                    statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                    statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
-                    try (ResultSet resultSet = statement.executeQuery()) {
-                        while (resultSet.next()) {
-                            String roleId = resultSet.getString(1);
-                            roleIds.add(roleId);
-                        }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_ID_LIST_OF_GROUP_SQL)) {
+            for (String groupName : groupNamesList) {
+                // Add domain if not set.
+                groupName = UserCoreUtil.addDomainToName(groupName, primaryDomainName);
+                // Get domain from name.
+                String domainName = UserCoreUtil.extractDomainFromName(groupName);
+                if (domainName != null) {
+                    domainName = domainName.toUpperCase(Locale.ENGLISH);
+                }
+                String nameWithoutDomain = UserCoreUtil.removeDomainFromName(groupName);
+                statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_NAME, nameWithoutDomain);
+                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+                statement.setString(RoleConstants.RoleTableColumns.UM_DOMAIN_NAME, domainName);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        String roleId = resultSet.getString(1);
+                        roleIds.add(roleId);
                     }
                 }
             }
@@ -1011,17 +1008,16 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<String> roleIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLE_ID_LIST_OF_IDP_GROUPS_SQL)) {
-                for (String groupId : groupIds) {
-                    statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_ID, groupId);
-                    statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                    try (ResultSet resultSet = statement.executeQuery()) {
-                        while (resultSet.next()) {
-                            String roleId = resultSet.getString(1);
-                            roleIds.add(roleId);
-                        }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                     GET_ROLE_ID_LIST_OF_IDP_GROUPS_SQL)) {
+            for (String groupId : groupIds) {
+                statement.setString(RoleConstants.RoleTableColumns.UM_GROUP_ID, groupId);
+                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        String roleId = resultSet.getString(1);
+                        roleIds.add(roleId);
                     }
                 }
             }
@@ -1039,16 +1035,14 @@ public class RoleDAOImpl implements RoleDAO {
             throws IdentityRoleManagementException {
 
         List<RoleDTO> hybridRoles = getHybridRolesByApplication(applicationId, tenantDomain);
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(true)) {
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(true);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, DELETE_ROLES_BY_APP_ID_SQL)) {
             try {
-                try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                        DELETE_ROLES_BY_APP_ID_SQL)) {
-                    statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID,
-                            IdentityTenantUtil.getTenantId(tenantDomain));
-                    statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE, APPLICATION);
-                    statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE_ID, applicationId);
-                    statement.executeUpdate();
-                }
+                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID,
+                        IdentityTenantUtil.getTenantId(tenantDomain));
+                statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE, APPLICATION);
+                statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE_ID, applicationId);
+                statement.executeUpdate();
                 for (RoleDTO role : hybridRoles) {
                     // Delete the role from IDN_SCIM_GROUP table.
                     deleteSCIMRole(role.getId(), role.getName(), role.getAudienceRefId(), null,
@@ -1077,24 +1071,19 @@ public class RoleDAOImpl implements RoleDAO {
         Map<String, String> rolesMap = new HashMap<>();
         String query = GET_MAIN_ROLE_TO_SHARED_ROLE_MAPPINGS_BY_SUBORG_SQL +
                 String.join(", ", Collections.nCopies(roleIds.size(), "?")) + ")";
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, query)) {
-                statement.setInt(1, IdentityTenantUtil.getTenantId(subOrgTenantDomain));
-                for (int i = 0; i < roleIds.size(); i++) {
-                    statement.setString(i + 2, roleIds.get(i));
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, query)) {
+
+            statement.setInt(1, IdentityTenantUtil.getTenantId(subOrgTenantDomain));
+            for (int i = 0; i < roleIds.size(); i++) {
+                statement.setString(i + 2, roleIds.get(i));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String mainRoleId = resultSet.getString(1);
+                    String sharedRoleId = resultSet.getString(2);
+                    rolesMap.put(mainRoleId, sharedRoleId);
                 }
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        String mainRoleId = resultSet.getString(1);
-                        String sharedRoleId = resultSet.getString(2);
-                        rolesMap.put(mainRoleId, sharedRoleId);
-                    }
-                }
-            } catch (SQLException e) {
-                String errorMessage = "Error while retrieving main role to shared role mappings by sub org tenant : "
-                        + subOrgTenantDomain;
-                throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(),
-                        errorMessage, e);
             }
         } catch (SQLException e) {
             String errorMessage = "Error while retrieving main role to shared role mappings by sub org tenant : "
@@ -1110,16 +1099,16 @@ public class RoleDAOImpl implements RoleDAO {
             throws IdentityRoleManagementException {
 
         List<String> associatedApplicationIds = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ASSOCIATED_APP_IDS_BY_ROLE_ID_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleID);
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID,
-                        IdentityTenantUtil.getTenantId(tenantDomain));
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        associatedApplicationIds.add(resultSet.getString(1));
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                     GET_ASSOCIATED_APP_IDS_BY_ROLE_ID_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleID);
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID,
+                    IdentityTenantUtil.getTenantId(tenantDomain));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    associatedApplicationIds.add(resultSet.getString(1));
                 }
             }
         } catch (SQLException e) {
@@ -1134,26 +1123,20 @@ public class RoleDAOImpl implements RoleDAO {
             throws IdentityRoleManagementException {
 
         List<RoleDTO> hybridRoles = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLES_BY_APP_ID_SQL)) {
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID,
-                        IdentityTenantUtil.getTenantId(tenantDomain));
-                statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE, APPLICATION);
-                statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE_ID, applicationId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        String id = resultSet.getString(1);
-                        String name = resultSet.getString(2);
-                        int tenantId = resultSet.getInt(3);
-                        int audienceRefId = resultSet.getInt(4);
-                        hybridRoles.add(new RoleDTO(id, name, audienceRefId, tenantId));
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLES_BY_APP_ID_SQL)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, IdentityTenantUtil.getTenantId(tenantDomain));
+            statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE, APPLICATION);
+            statement.setString(RoleConstants.RoleTableColumns.UM_AUDIENCE_ID, applicationId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String id = resultSet.getString(1);
+                    String name = resultSet.getString(2);
+                    int tenantId = resultSet.getInt(3);
+                    int audienceRefId = resultSet.getInt(4);
+                    hybridRoles.add(new RoleDTO(id, name, audienceRefId, tenantId));
                 }
-            } catch (SQLException e) {
-                String errorMessage = "Error while retrieving roles by app id : " + applicationId;
-                throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(),
-                        errorMessage, e);
             }
         } catch (SQLException e) {
             String errorMessage = "Error while retrieving roles by app id : " + applicationId;
@@ -1299,14 +1282,8 @@ public class RoleDAOImpl implements RoleDAO {
      */
     private void deleteRoleAssociations(String roleId, Connection connection) throws IdentityRoleManagementException {
 
-        try {
-            deleteAllPermissionsOfRole(roleId, connection);
-            deleteAppRoleAssociation(roleId, connection);
-        } catch (IdentityRoleManagementException e) {
-            String errorMessage = "Error while handling role deletion of roleID : " + roleId;
-            throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(),
-                    errorMessage, e);
-        }
+        deleteAllPermissionsOfRole(roleId, connection);
+        deleteAppRoleAssociation(roleId, connection);
     }
 
     /**
@@ -1317,13 +1294,17 @@ public class RoleDAOImpl implements RoleDAO {
      * @param tenantDomain Tenant Domain.
      * @throws IdentityRoleManagementException IdentityRoleManagementException.
      */
-    private void addRoleInfo(String roleId, String roleName, List<Permission> permissions, int audienceRefId,
-                               String tenantDomain) throws IdentityRoleManagementException {
+    private void addRoleInfo(String roleId, String roleName, List<Permission> permissions, String audience,
+                             String audienceId, int audienceRefId, String tenantDomain)
+            throws IdentityRoleManagementException {
 
         try (Connection connection = IdentityDatabaseUtil.getDBConnection(true)) {
             try {
                 addRoleID(roleId, roleName, audienceRefId, tenantDomain, connection);
                 addPermissions(roleId, permissions, tenantDomain, connection);
+                if (APPLICATION.equals(audience)) {
+                    addAppRoleAssociation(roleId, audienceId, connection);
+                }
                 IdentityDatabaseUtil.commitTransaction(connection);
             } catch (IdentityRoleManagementException e) {
                 IdentityDatabaseUtil.rollbackTransaction(connection);
@@ -1350,15 +1331,14 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         boolean isShared = false;
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, IS_SHARED_ROLE_SQL,
-                    RoleConstants.RoleTableColumns.UM_MAIN_ROLE_ID)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleId);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_SHARED_ROLE_TENANT_ID, tenantId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        isShared = resultSet.getInt(1) > 0;
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, IS_SHARED_ROLE_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleId);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_SHARED_ROLE_TENANT_ID, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    isShared = resultSet.getInt(1) > 0;
                 }
             }
         } catch (SQLException e) {
@@ -1403,16 +1383,16 @@ public class RoleDAOImpl implements RoleDAO {
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         String mainRoleId = null;
         int mainTenantId = -1;
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_SHARED_ROLE_MAIN_ROLE_ID_SQL, RoleConstants.RoleTableColumns.UM_MAIN_ROLE_ID)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleId);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        mainRoleId = resultSet.getString(RoleConstants.RoleTableColumns.UM_UUID);
-                        mainTenantId =  resultSet.getInt(RoleConstants.RoleTableColumns.UM_TENANT_ID);
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                GET_SHARED_ROLE_MAIN_ROLE_ID_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleId);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    mainRoleId = resultSet.getString(RoleConstants.RoleTableColumns.UM_UUID);
+                    mainTenantId =  resultSet.getInt(RoleConstants.RoleTableColumns.UM_TENANT_ID);
                 }
             }
             if (StringUtils.isNotEmpty(mainRoleId) && mainTenantId != -1) {
@@ -1444,19 +1424,18 @@ public class RoleDAOImpl implements RoleDAO {
         int mainTenantId = -1;
         String query = GET_SHARED_ROLES_MAIN_ROLE_IDS_SQL + String.join(", ",
                 Collections.nCopies(roleIds.size(), "?")) + ")";
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    query, RoleConstants.RoleTableColumns.UM_MAIN_ROLE_ID)) {
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                for (int i = 0; i < roleIds.size(); i++) {
-                    statement.setString(i + 2, roleIds.get(i));
-                }
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        mainRoleIds.add(resultSet.getString(RoleConstants.RoleTableColumns.UM_UUID));
-                        if (mainTenantId == -1) {
-                            mainTenantId = resultSet.getInt(RoleConstants.RoleTableColumns.UM_TENANT_ID);
-                        }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, query)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            for (int i = 0; i < roleIds.size(); i++) {
+                statement.setString(i + 2, roleIds.get(i));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    mainRoleIds.add(resultSet.getString(RoleConstants.RoleTableColumns.UM_UUID));
+                    if (mainTenantId == -1) {
+                        mainTenantId = resultSet.getInt(RoleConstants.RoleTableColumns.UM_TENANT_ID);
                     }
                 }
             }
@@ -1505,17 +1484,16 @@ public class RoleDAOImpl implements RoleDAO {
             throws IdentityRoleManagementException {
 
         List<AssociatedApplication> associatedApplications = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ASSOCIATED_APPS_BY_ROLE_ID_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID,
-                        IdentityTenantUtil.getTenantId(tenantDomain));
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        associatedApplications.add(new AssociatedApplication(resultSet.getString(1),
-                                resultSet.getString(2)));
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                GET_ASSOCIATED_APPS_BY_ROLE_ID_SQL)) {
+            statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID,
+                    IdentityTenantUtil.getTenantId(tenantDomain));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    associatedApplications.add(new AssociatedApplication(resultSet.getString(1),
+                            resultSet.getString(2)));
                 }
             }
         } catch (SQLException e) {
@@ -1559,6 +1537,28 @@ public class RoleDAOImpl implements RoleDAO {
     }
 
     /**
+     * Add app role association.
+     *
+     * @param roleId Role ID.
+     * @param appId App ID.
+     * @param connection DB connection.
+     * @throws IdentityRoleManagementException IdentityRoleManagementException.
+     */
+    private void addAppRoleAssociation(String roleId, String appId, Connection connection)
+            throws IdentityRoleManagementException {
+
+        try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, ADD_APP_ROLE_ASSOCIATION_SQL)) {
+            statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
+            statement.setString(RoleConstants.RoleTableColumns.APP_ID, appId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            String errorMessage = "Error while adding the app role association for app : " + appId + " and role : "
+                    + roleId;
+            throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(), errorMessage, e);
+        }
+    }
+
+    /**
      * Add permissions.
      *
      * @param roleId Role ID.
@@ -1573,6 +1573,7 @@ public class RoleDAOImpl implements RoleDAO {
         if (permissions == null || permissions.isEmpty()) {
             return;
         }
+        checkPermissionsAlreadyAdded(roleId, permissions, tenantDomain, connection);
         try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, ADD_ROLE_SCOPE_SQL)) {
             for (Permission permission : permissions) {
                 statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
@@ -1586,6 +1587,27 @@ public class RoleDAOImpl implements RoleDAO {
             String errorMessage = "Error while adding permissions to roleID : " + roleId;
             throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(),
                     errorMessage, e);
+        }
+    }
+
+    /**
+     * Check permissions already added.
+     *
+     * @param roleId Role ID.
+     * @param permissions Permissions.
+     * @param tenantDomain Tenant Domain.
+     * @param connection DB connection.
+     * @throws IdentityRoleManagementException IdentityRoleManagementException.
+     */
+    private void checkPermissionsAlreadyAdded(String roleId, List<Permission> permissions, String tenantDomain,
+                                              Connection connection) throws IdentityRoleManagementException {
+
+        List<String> alreadyAddedPermissions  = getPermissionNames(roleId, tenantDomain, connection);
+        for (Permission permission : permissions) {
+            if (alreadyAddedPermissions.contains(permission.getName())) {
+                throw new IdentityRoleManagementClientException(PERMISSION_ALREADY_ADDED.getCode(),
+                        "Permission: " + permission.getName() + " already assigned to role : " + roleId);
+            }
         }
     }
 
@@ -1623,15 +1645,16 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         List<Permission> permissions = new ArrayList<>();
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_SCOPE_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        permissions.add(new Permission(resultSet.getString(1),
-                                resultSet.getString(2)));
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_SCOPE_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    permissions.add(new Permission(resultSet.getString(1),
+                            resultSet.getString(2), resultSet.getString(3)));
+
                 }
             }
         } catch (SQLException e) {
@@ -1641,6 +1664,36 @@ public class RoleDAOImpl implements RoleDAO {
         }
         return permissions;
     }
+
+    /**
+     * Get permissions by role id.
+     *
+     * @param roleId Role name.
+     * @param tenantDomain Tenant Domain.
+     * @return List of permissions.
+     * @throws IdentityRoleManagementException IdentityRoleManagementException.
+     */
+    private List<String> getPermissionNames(String roleId, String tenantDomain, Connection connection)
+            throws IdentityRoleManagementException {
+
+        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+        List<String> permissions = new ArrayList<>();
+        try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_SCOPE_NAMES_SQL)) {
+            statement.setString(RoleConstants.RoleTableColumns.ROLE_ID, roleId);
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    permissions.add(resultSet.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            String errorMessage =
+                    "Error while retrieving permissions for role id: " + roleId + " and tenantDomain : " + tenantDomain;
+            throw new IdentityRoleManagementServerException(UNEXPECTED_SERVER_ERROR.getCode(), errorMessage, e);
+        }
+        return permissions;
+    }
+
 
     /**
      * Get role audience ref id.
@@ -2224,27 +2277,27 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         String roleID = null;
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_ROLE_ID_BY_NAME_AND_AUDIENCE_SQL)) {
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
-                statement.setString(ROLE_NAME, roleName);
-                statement.setString(RoleConstants.RoleTableColumns.ATTR_NAME, RoleConstants.ID_URI);
-                statement.setInt(RoleConstants.RoleTableColumns.AUDIENCE_REF_ID, audienceRefId);
-                int count = 0;
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        // Handle multiple matching roles.
-                        count++;
-                        if (count > 1) {
-                            String errorMessage =
-                                    "Invalid scenario. Multiple roles found for the given role name: " + roleName
-                                            + " and tenantDomain: " + tenantDomain;
-                            throw new IdentityRoleManagementClientException(
-                                    RoleConstants.Error.INVALID_REQUEST.getCode(), errorMessage);
-                        }
-                        roleID = resultSet.getString(1);
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection,
+                     GET_ROLE_ID_BY_NAME_AND_AUDIENCE_SQL)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
+            statement.setString(ROLE_NAME, roleName);
+            statement.setString(RoleConstants.RoleTableColumns.ATTR_NAME, RoleConstants.ID_URI);
+            statement.setInt(RoleConstants.RoleTableColumns.AUDIENCE_REF_ID, audienceRefId);
+            int count = 0;
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    // Handle multiple matching roles.
+                    count++;
+                    if (count > 1) {
+                        String errorMessage =
+                                "Invalid scenario. Multiple roles found for the given role name: " + roleName
+                                        + " and tenantDomain: " + tenantDomain;
+                        throw new IdentityRoleManagementClientException(
+                                RoleConstants.Error.INVALID_REQUEST.getCode(), errorMessage);
                     }
+                    roleID = resultSet.getString(1);
                 }
             }
         } catch (SQLException e) {
@@ -2268,22 +2321,22 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         String roleName = null;
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_NAME_BY_ID_SQL)) {
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleID);
-                int count = 0;
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        // Handle multiple matching roles.
-                        count++;
-                        if (count > 1) {
-                            String message = "Invalid scenario. Multiple roles found for the given role ID: " + roleID
-                                    + " and tenantDomain: " + tenantDomain;
-                            log.warn(message);
-                        }
-                        roleName = resultSet.getString(1);
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_ROLE_NAME_BY_ID_SQL)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleID);
+            int count = 0;
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    // Handle multiple matching roles.
+                    count++;
+                    if (count > 1) {
+                        String message = "Invalid scenario. Multiple roles found for the given role ID: " + roleID
+                                + " and tenantDomain: " + tenantDomain;
+                        log.warn(message);
                     }
+                    roleName = resultSet.getString(1);
                 }
             }
         } catch (SQLException e) {
@@ -2328,23 +2381,23 @@ public class RoleDAOImpl implements RoleDAO {
             throws IdentityRoleManagementException {
 
         RoleAudience roleAudience;
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_AUDIENCE_BY_ID_SQL)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleID);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        roleAudience = new RoleAudience(resultSet.getString(1),
-                                resultSet.getString(2));
-                        roleAudience.setAudienceName(getAudienceName(roleAudience.getAudience(),
-                                roleAudience.getAudienceId(), tenantDomain));
-                        return roleAudience;
-                    } else {
-                        String errorMessage =
-                                "Error while retrieving audience by role ID: " + roleID + " and tenantDomain: "
-                                        + tenantDomain;
-                        throw new IdentityRoleManagementServerException(RoleConstants.Error.UNEXPECTED_SERVER_ERROR
-                                .getCode(), errorMessage);
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_AUDIENCE_BY_ID_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_UUID, roleID);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    roleAudience = new RoleAudience(resultSet.getString(1),
+                            resultSet.getString(2));
+                    roleAudience.setAudienceName(getAudienceName(roleAudience.getAudience(),
+                            roleAudience.getAudienceId(), tenantDomain));
+                    return roleAudience;
+                } else {
+                    String errorMessage =
+                            "Error while retrieving audience by role ID: " + roleID + " and tenantDomain: "
+                                    + tenantDomain;
+                    throw new IdentityRoleManagementServerException(RoleConstants.Error.UNEXPECTED_SERVER_ERROR
+                            .getCode(), errorMessage);
                 }
             }
         } catch (SQLException e) {
@@ -2360,22 +2413,21 @@ public class RoleDAOImpl implements RoleDAO {
 
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
         int refId;
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_AUDIENCE_REF_BY_ID_SQL)) {
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
-                statement.setString(RoleConstants.RoleTableColumns.ATTR_NAME, RoleConstants.ID_URI);
-                statement.setString(RoleConstants.RoleTableColumns.ATTR_VALUE, roleID);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        refId = resultSet.getInt(1);
-                    } else {
-                        String errorMessage =
-                                "Error while retrieving audience ref id by role ID: " + roleID + " and tenantDomain: "
-                                        + tenantDomain;
-                        throw new IdentityRoleManagementServerException(RoleConstants.Error.UNEXPECTED_SERVER_ERROR
-                                .getCode(), errorMessage);
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_AUDIENCE_REF_BY_ID_SQL)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
+            statement.setString(RoleConstants.RoleTableColumns.ATTR_NAME, RoleConstants.ID_URI);
+            statement.setString(RoleConstants.RoleTableColumns.ATTR_VALUE, roleID);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    refId = resultSet.getInt(1);
+                } else {
+                    String errorMessage =
+                            "Error while retrieving audience ref id by role ID: " + roleID + " and tenantDomain: "
+                                    + tenantDomain;
+                    throw new IdentityRoleManagementServerException(RoleConstants.Error.UNEXPECTED_SERVER_ERROR
+                            .getCode(), errorMessage);
                 }
             }
         } catch (SQLException e) {
@@ -2421,36 +2473,35 @@ public class RoleDAOImpl implements RoleDAO {
 
         List<String> disabledDomainName = getDisabledDomainNames();
         int audienceRefId = getAudienceRefByID(roleID, tenantDomain);
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_USER_LIST_OF_ROLE_SQL,
-                    RoleConstants.RoleTableColumns.UM_ID)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_ROLE_NAME, roleName);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_AUDIENCE_REF_ID, audienceRefId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        String name = resultSet.getString(1);
-                        String domain = resultSet.getString(2);
-                        if (!disabledDomainName.contains(domain)) {
-                            if (StringUtils.isNotEmpty(domain)) {
-                                name = UserCoreUtil.addDomainToName(name, domain);
-                            }
-                            String userId;
-                            try {
-                                userId = getUserIDByName(name, tenantDomain);
-                            } catch (IdentityRoleManagementClientException roleManagementClientException) {
-                                String errorMessage = String.format(USER_NOT_FOUND_ERROR_MESSAGE, name, tenantDomain);
-                                if (roleManagementClientException.getMessage().equals(errorMessage)) {
-                                    if (log.isDebugEnabled()) {
-                                        log.debug(errorMessage);
-                                    }
-                                    continue;
-                                } else {
-                                    throw roleManagementClientException;
-                                }
-                            }
-                            userList.add(new UserBasicInfo(userId, name));
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_USER_LIST_OF_ROLE_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_ROLE_NAME, roleName);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_AUDIENCE_REF_ID, audienceRefId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String name = resultSet.getString(1);
+                    String domain = resultSet.getString(2);
+                    if (!disabledDomainName.contains(domain)) {
+                        if (StringUtils.isNotEmpty(domain)) {
+                            name = UserCoreUtil.addDomainToName(name, domain);
                         }
+                        String userId;
+                        try {
+                            userId = getUserIDByName(name, tenantDomain);
+                        } catch (IdentityRoleManagementClientException roleManagementClientException) {
+                            String errorMessage = String.format(USER_NOT_FOUND_ERROR_MESSAGE, name, tenantDomain);
+                            if (roleManagementClientException.getMessage().equals(errorMessage)) {
+                                if (log.isDebugEnabled()) {
+                                    log.debug(errorMessage);
+                                }
+                                continue;
+                            } else {
+                                throw roleManagementClientException;
+                            }
+                        }
+                        userList.add(new UserBasicInfo(userId, name));
                     }
                 }
             }
@@ -2529,15 +2580,15 @@ public class RoleDAOImpl implements RoleDAO {
 
         boolean isExist = false;
         int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
-        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection, IS_ROLE_ID_EXIST_SQL)) {
-                statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
-                statement.setString(RoleConstants.RoleTableColumns.ATTR_NAME, RoleConstants.ID_URI);
-                statement.setString(RoleConstants.RoleTableColumns.ATTR_VALUE, roleID);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        isExist = resultSet.getInt(1) > 0;
-                    }
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, IS_ROLE_ID_EXIST_SQL)) {
+
+            statement.setInt(RoleConstants.RoleTableColumns.TENANT_ID, tenantId);
+            statement.setString(RoleConstants.RoleTableColumns.ATTR_NAME, RoleConstants.ID_URI);
+            statement.setString(RoleConstants.RoleTableColumns.ATTR_VALUE, roleID);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    isExist = resultSet.getInt(1) > 0;
                 }
             }
         } catch (SQLException e) {
@@ -2617,24 +2668,23 @@ public class RoleDAOImpl implements RoleDAO {
             primaryDomainName = primaryDomainName.toUpperCase(Locale.ENGLISH);
         }
         int audienceRefId = getAudienceRefByID(roleID, tenantDomain);
-        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false)) {
-            try (NamedPreparedStatement statement = new NamedPreparedStatement(connection,
-                    GET_GROUP_LIST_OF_ROLE_SQL, RoleConstants.RoleTableColumns.UM_ID)) {
-                statement.setString(RoleConstants.RoleTableColumns.UM_ROLE_NAME, roleName);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
-                statement.setInt(RoleConstants.RoleTableColumns.UM_AUDIENCE_REF_ID, audienceRefId);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    while (resultSet.next()) {
-                        String name = resultSet.getString(1);
-                        String domain = resultSet.getString(2);
-                        if (!disabledDomainName.contains(domain)) {
-                            if (!StringUtils.equals(primaryDomainName, domain)) {
-                                name = UserCoreUtil.addDomainToName(name, domain);
-                            } else {
-                                name = primaryDomainName + UserCoreConstants.DOMAIN_SEPARATOR + name;
-                            }
-                            groupNames.add(name);
+        try (Connection connection = IdentityDatabaseUtil.getUserDBConnection(false);
+             NamedPreparedStatement statement = new NamedPreparedStatement(connection, GET_GROUP_LIST_OF_ROLE_SQL)) {
+
+            statement.setString(RoleConstants.RoleTableColumns.UM_ROLE_NAME, roleName);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_TENANT_ID, tenantId);
+            statement.setInt(RoleConstants.RoleTableColumns.UM_AUDIENCE_REF_ID, audienceRefId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String name = resultSet.getString(1);
+                    String domain = resultSet.getString(2);
+                    if (!disabledDomainName.contains(domain)) {
+                        if (!StringUtils.equals(primaryDomainName, domain)) {
+                            name = UserCoreUtil.addDomainToName(name, domain);
+                        } else {
+                            name = primaryDomainName + UserCoreConstants.DOMAIN_SEPARATOR + name;
                         }
+                        groupNames.add(name);
                     }
                 }
             }
